@@ -22,13 +22,13 @@ import {
 import {
   availableSeats,
   formatNoise,
-  freshness,
   noiseBand,
   roomState,
   sampleHistory,
   sampleRooms,
   timeAgo,
   locationLabel,
+  occupancyReading, noiseReading, hasStaticDemo, hasDisplayedOccupancy, hasRecentReading,
 } from "./rooms.js";
 import { useRooms, useSavedRooms } from "./useRooms.js";
 import { fetchJson } from "./api.js";
@@ -40,6 +40,24 @@ import roomPhotos from "../data/room-images.json";
 import { mergeDirectory, directionsUrl, compareRooms } from "./directory.js";
 
 import { matchesRoomSearch } from "./roomSearch.js";
+
+import ReportForm from "./ReportForm.jsx";
+
+function EstimateSource({ room, now }) {
+  const values = [
+    ["Occupancy", room.estimate?.occupancy],
+    ["Noise", room.estimate?.noise],
+  ].filter(([, value]) => value && now < Date.parse(value.expires_at));
+  const recent = room.estimate?.reports?.recent ?? 0;
+  if (!values.length && !recent) return null;
+  return (
+    <p className="estimate-source">
+      {values.length
+        ? values.map(([label, value]) => `${label}: ${value.source} · ${value.report_count} contributing ${value.report_count === 1 ? "report" : "reports"}`).join(" / ")
+        : `${recent} recent community ${recent === 1 ? "report" : "reports"} · no current contribution after filtering`}
+    </p>
+  );
+}
 
 const filters = [
   { id: "all", label: "All spaces" },
@@ -55,7 +73,7 @@ function Brand({ small = false }) {
         <DoorOpen size={small ? 19 : 23} strokeWidth={1.7} />
       </span>
       <span>
-        room<span className="brand-period">.</span>
+        SensoryAtlas<span className="brand-period">.</span>
       </span>
     </span>
   );
@@ -205,7 +223,7 @@ function ApiConnection({ onClose, onSave }) {
 
 function HowItWorks({ onClose }) {
   return (
-    <Modal title="How room works" onClose={onClose}>
+    <Modal title="How SensoryAtlas works" onClose={onClose}>
       <span className="eyebrow">A little less guesswork</span>
       <h2>
         A good spot changes
@@ -213,7 +231,7 @@ function HowItWorks({ onClose }) {
         your whole study session.
       </h2>
       <p className="modal-intro">
-        room brings occupancy and sound readings together, so you can choose a
+        SensoryAtlas brings occupancy, sound readings, and community observations together, so you can choose a
         space before you head over.
       </p>
       <div className="how-steps">
@@ -285,33 +303,40 @@ function NoiseLevel({ reading, live }) {
 }
 
 function RoomCard({ room, now, staleAfterSeconds, saved, onSave, onOpen, demo }) {
-  const state = roomState(room, now, staleAfterSeconds);
-  const live = freshness(room, now, staleAfterSeconds) === "live";
+  const state = !hasDisplayedOccupancy(room, now, staleAfterSeconds) && hasRecentReading(room, now, staleAfterSeconds)
+    ? { key: "live", label: "Community noise estimate" } : roomState(room, now, staleAfterSeconds);
+  const live = hasDisplayedOccupancy(room, now, staleAfterSeconds);
+  const occupancy = occupancyReading(room, now);
+  const sound = noiseReading(room, now, staleAfterSeconds);
   const seats = availableSeats(room, now, staleAfterSeconds);
+  const estimate = [room.estimate?.occupancy, room.estimate?.noise].find(value => value && now < Date.parse(value.expires_at));
   return (
     <article className="room-card">
       <div className="room-card-body">
         <div className="card-heading">
           <div>
             {demo && <p className="sample-label">Fictional sample data</p>}
-            <h3><button className="room-title" onClick={() => onOpen(room)} aria-label={`View ${room.name}`}>{room.name}<ArrowUpRight size={17} /></button></h3>
+            <h3 aria-label={room.name}><button className="room-title" onClick={() => onOpen(room)} aria-label={`View ${room.name}`}>{room.name}<ArrowUpRight size={17} /></button></h3>
             <p className="room-location"><MapPin size={15} />{locationLabel(room.location) || "Location not listed yet"}</p>
           </div>
           <button className={`save-button ${saved ? "is-saved" : ""}`} onClick={() => onSave(room.room_id)} aria-label={`${saved ? "Unsave" : "Save"} ${room.name}`} aria-pressed={saved}><Heart size={20} fill={saved ? "currentColor" : "none"} /></button>
         </div>
         <div className="card-readings">
-          <NoiseLevel reading={room.latest_reading} live={live} />
-          <div className="seat-estimate"><Users size={20} /><div><span className="metric-caption">{live ? "Estimated availability" : "Live availability"}</span><strong>{!live ? "Seats unknown" : seats == null ? `${room.latest_reading.people_count} people` : seats === 0 ? "0 estimated seats available" : <>About <span>{seats} seats</span> free</>}</strong></div></div>
+          <NoiseLevel reading={sound} live={Boolean(sound)} />
+          <div className="seat-estimate"><Users size={20} /><div><span className="metric-caption">{live ? "Estimated availability" : "Live availability"}</span><strong>{!live ? "Seats unknown" : seats == null ? Number.isFinite(occupancy?.people_count) ? `${occupancy.people_count} people` : occupancy?.fraction != null ? `~${Math.round(occupancy.fraction * 100)}% full` : "Occupancy unavailable" : seats === 0 ? "0 estimated seats available" : <>About <span>{seats} seats</span> free</>}</strong></div></div>
         </div>
-        <span className={`status-pill status-${state.key}`}><span />{room.latest_reading ? state.label : "No live readings"}</span>
+        <span className={`status-pill status-${state.key}`}><span />{hasRecentReading(room, now, staleAfterSeconds) && !live ? "Community noise estimate" : live ? state.label : room.latest_reading ? state.label : "No live readings"}</span>
+        <EstimateSource room={room} now={now} />
+        {!demo && hasStaticDemo(room) && <p className="sample-label">Fictional sensor history · static demo data</p>}
         <p className="capacity-note">{room.total_capacity == null ? "Capacity unknown" : `Published capacity: ${room.total_capacity} seats`}</p>
       </div>
-      <div className="room-card-footer"><span><Clock3 size={14} />{room.latest_reading ? `Measured ${timeAgo(room.latest_reading.measured_at, now).toLowerCase()}` : "No measurement yet"}</span><button onClick={() => onOpen(room)} aria-label={`Details for ${room.name}`}>Details <ArrowRight size={16} /></button></div>
+      <div className="room-card-footer"><span><Clock3 size={14} />{estimate ? `Reported ${timeAgo(estimate.measured_at, now).toLowerCase()}` : room.latest_reading ? `Measured ${timeAgo(room.latest_reading.measured_at, now).toLowerCase()}` : "No measurement yet"}</span><button onClick={() => onOpen(room)} aria-label={`Details for ${room.name}`}>Details <ArrowRight size={16} /></button></div>
     </article>
   );
 }
 
 function ActivityChart({ readings }) {
+  readings = readings.filter((reading) => Number.isFinite(reading.people_count) && Number.isFinite(Date.parse(reading.measured_at))).sort((a, b) => Date.parse(a.measured_at) - Date.parse(b.measured_at));
   if (!readings.length)
     return (
       <div className="activity-empty">
@@ -416,11 +441,15 @@ function RoomDetails({
   saved,
   onSave,
   onClose,
+  onReported,
 }) {
   const [history, setHistory] = useState({ status: "loading", readings: [] });
   const [attempt, setAttempt] = useState(0);
-  const state = roomState(room, now, staleAfterSeconds);
-  const live = freshness(room, now, staleAfterSeconds) === "live";
+  const state = !hasDisplayedOccupancy(room, now, staleAfterSeconds) && hasRecentReading(room, now, staleAfterSeconds)
+    ? { key: "live", label: "Community noise estimate" } : roomState(room, now, staleAfterSeconds);
+  const live = hasDisplayedOccupancy(room, now, staleAfterSeconds);
+  const occupancy = occupancyReading(room, now);
+  const sound = noiseReading(room, now, staleAfterSeconds);
   useEffect(() => {
     if (demo) {
       setHistory({ status: "ok", readings: sampleHistory(room, now) });
@@ -474,7 +503,7 @@ function RoomDetails({
           <Users size={19} />
           <span>Estimated people</span>
           <strong>
-            {live ? room.latest_reading.people_count : "—"}
+            {live && Number.isFinite(occupancy?.people_count) ? occupancy.people_count : live && occupancy?.fraction != null ? `~${Math.round(occupancy.fraction * 100)}% full` : "—"}
             <small> / {room.total_capacity ?? "—"}</small>
           </strong>
         </div>
@@ -482,9 +511,9 @@ function RoomDetails({
           <AudioLines size={20} />
           <span>Sound band · approximate</span>
           <strong>
-            {live ? noiseBand(room.latest_reading)?.label : "—"}
+            {noiseBand(sound)?.label ?? "—"}
             <small>
-              {live ? formatNoise(room.latest_reading) : "No current reading"}
+              {sound ? formatNoise(sound) : "No current reading"}
             </small>
           </strong>
         </div>
@@ -501,6 +530,10 @@ function RoomDetails({
           </strong>
         </div>
       </div>
+      <EstimateSource room={room} now={now} />
+      {!demo && <ReportForm key={room.room_id} room={room} onReported={onReported} />}
+      {Number.isFinite(room.latest_reading?.average_confidence) && <p className="measurement-time">Detection confidence: {Math.round(room.latest_reading.average_confidence * 100)}% · mean person-box score, not count accuracy</p>}
+      {!demo && hasStaticDemo(room) && <p className="sample-label">Fictional sensor history · static demo data</p>}
       <p className="measurement-time">
         {room.latest_reading
           ? `Last measured ${new Date(room.latest_reading.measured_at).toLocaleString()} (${timeAgo(room.latest_reading.measured_at, now).toLowerCase()})`
@@ -516,7 +549,7 @@ function RoomDetails({
         {directionsUrl(room) && <a className="primary-button" href={directionsUrl(room)} target="_blank" rel="noreferrer"><MapPin size={18} />Directions <ArrowUpRight size={16} /></a>}
         {room.source_url && <a className="secondary-button" href={room.source_url} target="_blank" rel="noreferrer">View on UBC <ArrowUpRight size={16} /></a>}
       </div>
-      {roomPhotos.images[room.room_id] && <figure className="detail-photo"><img src={roomPhotos.images[room.room_id].path} alt={`${room.name} study area`} loading="lazy" /><figcaption>Photo: UBC Learning Spaces</figcaption></figure>}
+      {roomPhotos.images[room.catalog_id ?? room.room_id] && <figure className="detail-photo"><img src={roomPhotos.images[room.catalog_id ?? room.room_id].path} alt={`${room.name} study area`} loading="lazy" /><figcaption>Photo: UBC Learning Spaces</figcaption></figure>}
       <div className="activity-heading">
         <h3>Recent occupancy</h3>
         <span>{demo ? "Up to 100 recent readings · fictional" : "Up to 100 recent readings"}</span>
@@ -577,11 +610,13 @@ function FilterSheet({ building, sort, buildings, onApply, onClose }) {
 
 export default function App() {
   const live = useRooms();
-  const { saved, toggle } = useSavedRooms();
   const [now, setNow] = useState(Date.now());
   const native = Capacitor.isNativePlatform();
   const [mobile, setMobile] = useState(() => native || matchMedia("(max-width: 700px)").matches);
   const [demo, setDemo] = useState(false);
+  const liveSaved = useSavedRooms();
+  const demoSaved = useSavedRooms("room.saved.demo");
+  const { saved, toggle } = demo ? demoSaved : liveSaved;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [building, setBuilding] = useState("all");
@@ -614,10 +649,10 @@ export default function App() {
   const clock = demo ? Date.parse(examples[0].latest_reading.measured_at) : now;
   const rooms = useMemo(() => demo ? examples : mergeDirectory(directoryRooms, live.rooms), [demo, examples, live.rooms]);
   const staleAfter = live.staleAfterSeconds;
-  const reporting = rooms.filter((room) => freshness(room, clock, staleAfter) === "live");
+  const reporting = rooms.filter((room) => hasRecentReading(room, clock, staleAfter));
   const buildings = [...new Set(rooms.map((room) => room.location?.building).filter(Boolean))].sort();
   const savedCount = rooms.filter((room) => saved.has(room.room_id)).length;
-  const matchesFilter = (room, kind) => kind === "all" || (kind === "saved" ? saved.has(room.room_id) : kind === "available" ? (availableSeats(room, clock, staleAfter) ?? 0) > 0 : freshness(room, clock, staleAfter) === "live" && noiseBand(room.latest_reading)?.level === "quiet");
+  const matchesFilter = (room, kind) => kind === "all" || (kind === "saved" ? saved.has(room.room_id) : kind === "available" ? (availableSeats(room, clock, staleAfter) ?? 0) > 0 : noiseBand(noiseReading(room, clock, staleAfter))?.level === "quiet");
   // Snapshot ranks after a successful check or a deliberate sort change. Polls
   // update metrics in place without moving a card under a student's thumb.
   const orderKey = `${demo}:${sort}:${Boolean(live.checkedAt)}`;
@@ -640,7 +675,7 @@ export default function App() {
   function switchDemo(value) { setDemo(value); clearFilters(); }
   return <>
     <a className="skip-link" href="#spaces">Skip to study spaces</a>
-    <header className="site-header"><div className="nav-wrap"><a className="brand-link" href="#spaces" aria-label="room home"><Brand /></a><span className="header-campus">UBC study spaces</span><nav aria-label="Main navigation"><a className="nav-link" href="#spaces">Find a space</a><button className="nav-link" onClick={() => setHow(true)}>How it works</button></nav><button className="nav-saved" aria-label={`Saved spaces${savedCount ? ` (${savedCount})` : ""}`} onClick={() => { setFilter("saved"); spacesRef.current?.scrollIntoView(); }}><Heart size={18} /><span>Saved</span>{savedCount > 0 && <span className="saved-count">{savedCount}</span>}</button><button className="mobile-help icon-button" aria-label="How it works" onClick={() => setHow(true)}><Info size={20} /></button></div></header>
+    <header className="site-header"><div className="nav-wrap"><a className="brand-link" href="#spaces" aria-label="SensoryAtlas home"><Brand /></a><span className="header-campus">UBC study spaces</span><nav aria-label="Main navigation"><a className="nav-link" href="#spaces">Find a space</a><button className="nav-link" onClick={() => setHow(true)}>How it works</button></nav><button className="nav-saved" aria-label={`Saved spaces${savedCount ? ` (${savedCount})` : ""}`} onClick={() => { setFilter("saved"); spacesRef.current?.scrollIntoView(); }}><Heart size={18} /><span>Saved</span>{savedCount > 0 && <span className="saved-count">{savedCount}</span>}</button><button className="mobile-help icon-button" aria-label="How it works" onClick={() => setHow(true)}><Info size={20} /></button></div></header>
     <main>
       {!mobile && <section className="hero page-width"><div className="hero-copy"><span className="eyebrow"><Asterisk size={18} />A little less guesswork</span><h1>Find a quiet<br />spot at <em>UBC</em></h1><p>Find a place for your next study session. Explore campus spaces and check live occupancy and sound readings where sensors are available.</p><div className="hero-actions"><a className="primary-button" href="#spaces">Explore study spaces <ArrowDown size={17} /></a><button className="secondary-button" onClick={() => switchDemo(true)}>Try sample preview <ArrowUpRight size={17} /></button></div></div><div className="hero-art"><div className="art-note"><span className="note-dot" />A good spot makes all the difference.</div><DeskIllustration /><span className="art-signature">Make yourself at home.</span></div></section>}
       <section className="spaces-section page-width" ref={spacesRef} id="spaces" aria-labelledby="spaces-heading">
@@ -655,13 +690,13 @@ export default function App() {
         {filtered.length ? <div className="room-grid">{filtered.map((room) => <RoomCard key={room.room_id} room={room} now={clock} staleAfterSeconds={staleAfter} saved={saved.has(room.room_id)} onSave={toggle} onOpen={openRoom} demo={demo} />)}</div> : <div className="empty-state"><Search size={28} /><h3>{rooms.length ? "No spaces match just yet." : "No study spaces listed yet."}</h3><p>{filter === "saved" ? "Save a space with the heart to keep it close, even without live readings." : "Try another search or give your filters a little more room."}</p><button className="secondary-button" onClick={clearFilters}>Show all spaces <ArrowRight size={16} /></button></div>}
         <div className="data-note"><span><Info size={16} />Readings are estimates, with their own timestamps.</span><button onClick={() => setHow(true)}>A note on the numbers <ArrowUpRight size={16} /></button></div>
       </section>
-      <section className="about-section page-width"><div><span className="eyebrow">A little less guesswork</span><h2>A good spot changes<br />your study session.</h2><p>Browse real locations from <a href="https://learningspaces.ubc.ca/find-a-space-informal/" target="_blank" rel="noreferrer">UBC Learning Spaces</a>. Live sensors cover a limited set of spaces. A space without a sensor stays in the directory, with no live readings.</p><p>No account or location permission needed. Saved spaces stay on this device. Sensors report people counts and sound levels.</p><button className="secondary-button" onClick={() => setHow(true)}>How it works <ArrowRight size={16} /></button></div>{mobile && <DeskIllustration />}</section>
+      <section className="about-section page-width"><div><span className="eyebrow">A little less guesswork</span><h2>A good spot changes<br />your study session.</h2><p>Browse real locations from <a href="https://learningspaces.ubc.ca/find-a-space-informal/" target="_blank" rel="noreferrer">UBC Learning Spaces</a>. Live sensors cover a limited set of spaces. Community observations can also provide short-lived estimates for spaces without sensors.</p><p>No account or location permission needed. Saved spaces stay on this device. Sensors report people counts and sound levels.</p><button className="secondary-button" onClick={() => setHow(true)}>How it works <ArrowRight size={16} /></button></div>{mobile && <DeskIllustration />}</section>
       {native && <div className="native-connection page-width"><span>{readApiOrigin() ? "Monitored rooms use your saved API connection" : "Live connection not configured · directory available offline"}</span><button onClick={() => setConnectionOpen(true)}>API connection</button></div>}
     </main>
     <footer className="page-width site-footer"><Brand small /><p>Made for better study days.</p><span>An independent UBC prototype · limited coverage.</span></footer>
     {filtersOpen && <FilterSheet building={building} sort={sort} buildings={buildings} onClose={() => setFiltersOpen(false)} onApply={(nextBuilding, nextSort) => { setBuilding(nextBuilding); setSort(nextSort); setFiltersOpen(false); }} />}
     {connectionOpen && <ApiConnection onClose={() => setConnectionOpen(false)} onSave={() => live.retry({ clear: true })} />}
     {how && <HowItWorks onClose={() => setHow(false)} />}
-    {currentRoom && <RoomDetails room={currentRoom} demo={demo} now={clock} staleAfterSeconds={staleAfter} saved={saved.has(currentRoom.room_id)} onSave={toggle} onClose={closeRoom} />}
+    {currentRoom && <RoomDetails room={currentRoom} demo={demo} now={clock} staleAfterSeconds={staleAfter} saved={saved.has(currentRoom.room_id)} onSave={toggle} onClose={closeRoom} onReported={() => live.retry()} />}
   </>;
 }

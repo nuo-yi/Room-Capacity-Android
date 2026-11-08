@@ -1,11 +1,43 @@
 export function freshness(room, now, staleAfterSeconds = 60) {
+  const estimate = room.estimate?.occupancy;
+  if (estimate && now < Date.parse(estimate.expires_at)) return 'live';
   if (!room.latest_reading) return "waiting";
+  if (!Number.isFinite(Date.parse(room.latest_reading.measured_at))) return "delayed";
+  if (!Number.isFinite(room.latest_reading.people_count) && !noiseBand(room.latest_reading)) return "waiting";
+  if (hasStaticDemo(room)) return 'demo';
   if (
     room.stale ||
     now - Date.parse(room.latest_reading.measured_at) > staleAfterSeconds * 1000
   )
     return "delayed";
   return "live";
+}
+
+export function hasStaticDemo(room) {
+  return Boolean(room.latest_reading?.device_id?.startsWith('demo-'));
+}
+
+export function hasDisplayedOccupancy(room, now, staleAfterSeconds = 60) {
+  return ['live', 'demo'].includes(freshness(room, now, staleAfterSeconds));
+}
+
+export function hasRecentReading(room, now, staleAfterSeconds = 60) {
+  const noise = room.estimate?.noise;
+  return freshness(room, now, staleAfterSeconds) === 'live' ||
+    Boolean(noise && now < Date.parse(noise.expires_at) && noiseBand(noise));
+}
+
+export function occupancyReading(room, now = Date.now()) {
+  const estimate = room.estimate?.occupancy;
+  return estimate && now < Date.parse(estimate.expires_at) ? estimate : room.latest_reading;
+}
+
+export function noiseReading(room, now, staleAfterSeconds = 60) {
+  const estimate = room.estimate?.noise;
+  if (estimate && now < Date.parse(estimate.expires_at)) return estimate;
+  const raw = room.latest_reading;
+  if (hasStaticDemo(room)) return raw;
+  return raw && !room.stale && now - Date.parse(raw.measured_at) <= staleAfterSeconds * 1000 ? raw : null;
 }
 
 export function locationLabel(location) {
@@ -28,6 +60,9 @@ export function locationLabel(location) {
 }
 
 export function noiseBand(reading) {
+  if (['quiet', 'moderate', 'lively'].includes(reading?.noise_band)) {
+    return { level: reading.noise_band, label: { quiet: 'Quiet', moderate: 'Moderate', lively: 'Lively' }[reading.noise_band] };
+  }
   if (!reading || !Number.isFinite(reading.noise_level)) return null;
   const [low, high] = reading.noise_unit === "dBA" ? [45, 60] : [0.25, 0.6];
   const level =
@@ -47,7 +82,9 @@ export function roomState(room, now, staleAfterSeconds) {
   if (fresh === "waiting")
     return { key: "waiting", label: "Awaiting a reading" };
   if (fresh === "delayed") return { key: "delayed", label: "Reading delayed" };
-  const people = room.latest_reading.people_count;
+  if (fresh === 'demo') return { key: 'live', label: 'Static demo data' };
+  const people = occupancyReading(room, now)?.people_count;
+  if (!Number.isFinite(people)) return { key: 'live', label: occupancyReading(room, now)?.fraction != null ? 'Approximate fullness reported' : 'Recent reading' };
   if (people === 0) return { key: "open", label: "No people detected" };
   if (room.total_capacity == null)
     return { key: "live", label: "Recent reading" };
@@ -58,14 +95,16 @@ export function roomState(room, now, staleAfterSeconds) {
 
 export function availableSeats(room, now, staleAfterSeconds) {
   if (
-    freshness(room, now, staleAfterSeconds) !== "live" ||
+    !hasDisplayedOccupancy(room, now, staleAfterSeconds) ||
     room.total_capacity == null
   )
     return null;
-  return Math.max(0, room.total_capacity - room.latest_reading.people_count);
+  const people = occupancyReading(room, now)?.people_count;
+  return Number.isFinite(people) ? Math.max(0, room.total_capacity - people) : null;
 }
 
 export function formatNoise(reading) {
+  if (reading?.noise_band) return `${reading.source} estimate`;
   if (!reading || !Number.isFinite(reading.noise_level)) return "—";
   return reading.noise_unit === "dBA"
     ? `${reading.noise_level.toFixed(0)} dBA`
@@ -74,7 +113,9 @@ export function formatNoise(reading) {
 
 export function timeAgo(time, now = Date.now()) {
   if (!time) return "Not yet";
-  const seconds = Math.max(0, Math.floor((now - Date.parse(time)) / 1000));
+  const timestamp = typeof time === "number" ? time : Date.parse(time);
+  if (!Number.isFinite(timestamp)) return "Time unavailable";
+  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
   if (seconds < 10) return "Just now";
   if (seconds < 60) return `${seconds}s ago`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;

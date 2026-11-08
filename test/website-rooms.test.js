@@ -1,0 +1,77 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { locationLabel } from "../src/rooms.js";
+import {
+  availableSeats,
+  freshness,
+  formatNoise,
+  noiseBand,
+  roomState,
+  sampleRooms,
+  noiseReading,
+  occupancyReading,
+  timeAgo,
+  hasRecentReading,
+} from "../src/rooms.js";
+
+test('noise-only community freshness never revives stale occupancy or static demos', () => {
+  const now = Date.now();
+  const stale = { ...sampleRooms(now - 3600000)[0], stale: true };
+  const room = { ...stale, estimate: { noise: { noise_band: 'quiet', expires_at: new Date(now + 1000).toISOString() } } };
+  assert.equal(hasRecentReading(room, now, 60), true);
+  assert.equal(availableSeats(room, now, 60), null);
+  assert.equal(hasRecentReading(room, now + 1000, 60), false);
+  assert.equal(hasRecentReading({ ...stale, latest_reading: { ...stale.latest_reading, device_id: 'demo-old' } }, now, 60), false);
+});
+
+test("partial metrics never invent people counts and malformed timestamps are not fresh", () => {
+  const now = Date.now();
+  const room = sampleRooms(now)[0];
+  const noiseOnly = {
+    ...room,
+    latest_reading: { ...room.latest_reading, people_count: null },
+  };
+  assert.equal(availableSeats(noiseOnly, now, 60), null);
+  assert.equal(freshness(noiseOnly, now, 60), "live");
+  assert.equal(
+    freshness(
+      {
+        ...room,
+        latest_reading: { ...room.latest_reading, measured_at: "invalid" },
+      },
+      now,
+      60,
+    ),
+    "delayed",
+  );
+});
+
+test("measurement strings and last-checked numeric timestamps share age formatting", () => {
+  const now = Date.parse("2026-11-08T12:00:00Z");
+  assert.equal(timeAgo(now - 15000, now), "15s ago");
+  assert.equal(timeAgo(new Date(now - 15000).toISOString(), now), "15s ago");
+  assert.equal(timeAgo("invalid", now), "Time unavailable");
+});
+
+test('static database demos stay visible while real sensors and community estimates still expire', () => {
+  const now = Date.now();
+  const original = sampleRooms(now - 86400000)[0];
+  const room = { ...original, stale: true, latest_reading: { ...original.latest_reading, device_id: 'demo-fixture' } };
+  assert.equal(freshness(room, now, 60), 'demo');
+  assert.equal(roomState(room, now, 60).label, 'Static demo data');
+  assert.equal(availableSeats(room, now, 60), 11);
+  assert.equal(noiseReading(room, now, 60).noise_level, 0.12);
+  const expiry = new Date(now + 1000).toISOString();
+  const reported = { ...room, estimate: {
+    occupancy: { people_count: 7, expires_at: expiry },
+    noise: { noise_band: 'moderate', expires_at: expiry },
+  } };
+  assert.equal(occupancyReading(reported, now).people_count, 7);
+  assert.equal(noiseReading(reported, now, 60).noise_band, 'moderate');
+  assert.equal(freshness(reported, now + 2000, 60), 'demo');
+  assert.equal(occupancyReading(reported, now + 2000).people_count, 5);
+  const sensor = { ...room, latest_reading: { ...room.latest_reading, device_id: 'pi-1' } };
+  assert.equal(freshness(sensor, now, 60), 'delayed');
+  assert.equal(availableSeats(sensor, now, 60), null);
+  assert.equal(noiseReading(sensor, now, 60), null);
+});

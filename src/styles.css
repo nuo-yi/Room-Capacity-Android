@@ -235,3 +235,25 @@ html:has(dialog[open]) { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
+
+.report-form { margin: 24px 0; padding: 22px; border: 1px solid var(--line, #deded6); border-radius: 16px; background: var(--paper, #fafaf5); }
+.report-form h3 { margin: 0 0 8px; }
+.report-form p { line-height: 1.55; }
+.report-fields { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; margin: 18px 0; align-items: start; }
+.report-fields label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 600; }
+.report-fields input { width: 100%; min-width: 0; min-height: 44px; padding: 10px; border: 1px solid #9b9e91; border-radius: 8px; background: white; color: #28372e; font: inherit; }
+.report-choice-field { min-width: 0; margin: 0; padding: 0; border: 0; }
+.report-choice-field legend { margin-bottom: 8px; padding: 0; font-size: 13px; font-weight: 600; }
+.report-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.report-choices button { min-width: 0; min-height: 44px; padding: 10px 8px; border: 1px solid #9b9e91; border-radius: 8px; background: white; color: #28372e; font: inherit; font-size: 13px; line-height: 1.4; cursor: pointer; }
+.report-choices button[aria-pressed="true"] { border-color: #365847; background: #365847; color: white; font-weight: 600; }
+.report-choices button:hover:not(:disabled):not([aria-pressed="true"]) { background: #edf2e8; }
+.report-noise-field { grid-column: 1 / -1; }
+.report-noise-choices { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.report-fields-percent > .report-choice-field { grid-column: 1 / -1; }
+.report-percent-choices { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.report-help, .estimate-source { font-size: 12px; color: #53634f; }
+.report-form button:disabled { opacity: .65; cursor: default; }
+@media (max-width: 650px) { .report-fields { grid-template-columns: 1fr; } .report-form { padding: 16px; } .report-noise-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); } .report-percent-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+@media (max-width: 700px) { .brand { font-size: 20px; letter-spacing: -.7px; } }

@@ -1,6 +1,6 @@
 {
   "appId": "io.github.grantyu9.roomcapacity",
-  "appName": "room.",
+  "appName": "SensoryAtlas",
   "webDir": "dist",
   "backgroundColor": "#f8f9f4",
   "android": { "allowMixedContent": false },

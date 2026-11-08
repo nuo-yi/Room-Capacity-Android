@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">room.</string>
-    <string name="title_activity_main">room.</string>
+    <string name="app_name">SensoryAtlas</string>
+    <string name="title_activity_main">SensoryAtlas</string>
     <string name="package_name">io.github.grantyu9.roomcapacity</string>
     <string name="custom_url_scheme">io.github.grantyu9.roomcapacity</string>
 </resources>

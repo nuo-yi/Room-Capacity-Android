@@ -26,7 +26,7 @@ async function mockNativeBridge(page) {
     window.nativeOffline = false;
     window.Capacitor = {
       PluginHeaders: [
-        { name: "CapacitorHttp", methods: [{ name: "get", rtype: "promise" }] },
+        { name: "CapacitorHttp", methods: [{ name: "get", rtype: "promise" }, { name: "post", rtype: "promise" }] },
         { name: "App", methods: [{ name: "addListener", rtype: "callback" }, { name: "removeListener", rtype: "promise" }, { name: "minimizeApp", rtype: "promise" }] },
       ],
       nativeCallback(_plugin, method, options, callback) {
@@ -39,6 +39,10 @@ async function mockNativeBridge(page) {
           return {};
         }
         window.nativeRequests.push(options.url);
+        if (method === "post") {
+          window.submittedReport = options.data;
+          return { status: 201, data: { saved: true, message: "Thanks! Your observation was received." } };
+        }
         if (window.nativeOffline) return { status: 503, data: {} };
         const reading = { people_count: 0, noise_level: 0.1, noise_unit: "relative", measured_at: new Date().toISOString() };
         return { status: 200, data: options.url.includes("/api/readings")
@@ -93,4 +97,22 @@ test("Android native failed checks recover on resume and never select sample mod
   await expect(page.getByRole("button", { name: "Try sample preview", exact: true })).toHaveCount(0);
   await page.evaluate(() => { window.scrollTo(0, 0); window.nativeListeners.backButton({}); });
   await expect.poll(() => page.evaluate(() => window.nativeMinimized)).toBe(true);
+});
+
+
+test("Android submits observations through the native bridge and refreshes rooms", async ({ page }) => {
+  await mockNativeBridge(page);
+  await page.addInitScript(() => localStorage.setItem("room.api-origin", "https://example.com"));
+  await page.goto("/");
+  await page.getByRole("button", { name: "View Android Room", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("group", { name: "Approximate fullness (%)", exact: true }).getByRole("button", { name: "0%", exact: true }).click();
+  await dialog.getByRole("group", { name: "Noise level", exact: true }).getByRole("button", { name: "Quiet", exact: true }).click();
+  const checks = await page.evaluate(() => window.nativeRequests.filter(url => url.endsWith("/api/rooms")).length);
+  await dialog.getByRole("button", { name: "Share observation", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("Thanks!");
+  expect(await page.evaluate(() => window.submittedReport)).toEqual({ room_id: "android-fixture", occupancy_percent: 0, noise_band: "quiet" });
+  await expect.poll(() => page.evaluate(() => window.nativeRequests.filter(url => url.endsWith("/api/rooms")).length)).toBeGreaterThan(checks);
+  await page.evaluate(() => window.nativeListeners.backButton({}));
+  await expect(dialog).toHaveCount(0);
 });

@@ -1,10 +1,10 @@
-# room. for Android
+# SensoryAtlas for Android
 
-An installable Android version of the Room Capacity React website, packaged with Capacitor 8. The frontend snapshot came from `GrantYu9/Room-Capacity-App`; that project and its API/schema are unchanged. This is a WebView interface inside an Android app, not a Kotlin or React Native rewrite.
+An installable Android version of the Room Capacity React website, packaged with Capacitor 8. The frontend snapshot came from `GrantYu9/Room-Capacity-Website`; that project and its API/schema are unchanged. This is a WebView interface inside an Android app, not a Kotlin or React Native rewrite.
 
 The app includes the UBC study-space directory and its photos, search and building filters, local favourites, room details, occupancy history, and an explicitly labelled fictional sample preview. The bundled directory and preview work offline. Monitored readings require a reachable deployed API and working sensors; packaging does not connect the physical sensors.
 
-## Install this session's APK
+## Install the APK
 
 `artifacts/room-capacity-debug.apk` is the locally signed debug build for direct installation. Transfer it to an Android phone, open it, and allow installation from that source when Android asks. Android 7+ and a current Android System WebView are required. This APK is for testing, not Play Store submission.
 
@@ -30,18 +30,22 @@ Browser tests use system Chromium when available. Otherwise install it with `npx
 
 With an emulator running, start the project-local ADB server, install the APK with `.tools/android-sdk/platform-tools/adb install -r artifacts/room-capacity-debug.apk`, then run `npm run test:android`. The smoke script selects an emulator by default, temporarily changes its API setting, and restores that setting afterward. Set `ANDROID_SERIAL` explicitly to select another device. It writes emulator screenshots and a JSON report under `artifacts/` and uses a public GitHub JSON endpoint to verify the actual native HTTPS transport.
 
-## Verified in this session
+## Verification
 
-- `npm test`: 23 passed.
-- `npm run build`: passed.
-- `npm run test:browser`: 46 desktop/mobile checks passed, including accessibility, fresh/stale/unknown readings, retry recovery, API setup and native lifecycle simulation.
-- `npm run android:build`: passed; the APK signature was verified with Android `apksigner`.
-- Android 15 emulator: APK installed and launched; offline directory/search, sample room details/history, physical Back-button dismissal, invalid API response handling and a real native HTTPS JSON request passed. Screenshots are in `artifacts/android-home.png` and `artifacts/android-room-details.png`; the report is `artifacts/android-smoke.json`.
+The v0.1.3 update passed 32 unit tests, 39 desktop/mobile browser checks (3 platform-specific skips), the production web build, and the Android debug build. APK signature and packaged version checks passed; its certificate matches the published v0.1.2 APK. Browser coverage includes community submissions and validation errors, independent metric expiry, static demos, confidence labels, separate sample favourites, accessibility, Back behavior, connection settings and background polling.
 
-A physical phone and the deployed Room Capacity API/sensors have not been verified. No production API origin was supplied, so live monitored readings still require configuration.
+No emulator or physical phone was connected during this update. The native smoke script is updated for the current mobile directory, but was not run for v0.1.3. Live observation submission and sensor-to-device behavior still need device verification; no test observations were sent to the production service.
 
 ## Distribution
 
 The application ID is `io.github.grantyu9.roomcapacity`. A Play Store release requires a private release signing/upload key, a signed Android App Bundle, store listing/privacy information and a developer account. No release key or store publication is part of this local build. Preserve the debug signing key to update the same installed debug app; uninstalling may clear local favourites and API settings. Android backups are disabled for the app's locally saved settings.
 
 The original font licences are in `LICENSES/`; directory photo attribution and source links are retained in `data/room-images.json` and the UI.
+
+## Android preview v0.1.3
+
+Ported from website main `3079a43`. Community observations accept optional headcounts (including zero), approximate percentage full, and quiet/moderate/lively impressions. Room cards, details, quiet filters and freshness sorting use independent API occupancy/noise estimates. Expired community values never revive stale sensor counts. Unknown capacities remain unknown; percentage-only reports do not invent headcounts. Sensor history remains separate, and nullable detection confidence is labelled as a box score, not accuracy.
+
+Static demo device data stays visible with a fictional label and does not count as recent live coverage. Sample-preview favourites are stored separately from live favourites. Android retains its mobile directory layout, stable card order during polling, connection settings, background pause/resume and Back handling. The launcher name now matches SensoryAtlas; the application ID and debug signing key are unchanged for upgrades.
+
+Native report submissions use CapacitorHttp POST and the platform cookie manager for the server-signed reporter cookie. Server validation and rate-limit errors are shown without clearing the observation. Reports require the website's existing reporting migration and server-side REPORT_SECRET. Offline directory browsing remains available; observations need a reachable API and an imported room. This client does not change or deploy the backend.

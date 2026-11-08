@@ -110,7 +110,7 @@ test('directory and detail screens pass automated accessibility', async ({ page 
   const check = async () => expect((await new AxeBuilder({ page }).withTags(['wcag2a','wcag2aa']).analyze()).violations).toEqual([]);
   await check(); await card(page, 'Reading Room').getByRole('button', { name: 'View Reading Room', exact: true }).click(); await check();
   await page.getByRole('button', { name: 'Close dialog' }).click();
-  await page.getByRole('button', { name: 'How it works', exact: true }).click(); await check();
+  await page.getByRole('main').getByRole('button', { name: 'How it works', exact: true }).click(); await check();
 });
 
 test('mobile dimensions, larger text, filter sheet and old demo links remain usable', async ({ page }, info) => {
