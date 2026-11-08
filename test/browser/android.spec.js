@@ -53,7 +53,7 @@ test("Android setup persists, native reads load rooms/history, and Back closes d
   await mockNativeBridge(page);
   await page.goto("/");
   await expect(page.getByText("Live connection not configured · directory available offline")).toBeVisible();
-  await expect(page.getByRole("region", { name: "Unmonitored study spaces" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Find your space." })).toBeVisible();
   await page.getByRole("button", { name: "API connection", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "API connection" });
   await dialog.getByLabel("Website address").fill("https://example.com/api");
@@ -74,7 +74,7 @@ test("Android setup persists, native reads load rooms/history, and Back closes d
   await expect(page.getByLabel("Website address")).toHaveValue("https://example.com");
   await page.getByLabel("Website address").fill("");
   await page.getByRole("button", { name: "Save connection" }).click();
-  await expect(page.getByRole("article")).toHaveCount(0);
+  await expect(page.getByRole("article")).toHaveCount(68);
   await expect(page.getByText("Live connection not configured · directory available offline")).toBeVisible();
 });
 
@@ -83,14 +83,14 @@ test("Android native failed checks recover on resume and never select sample mod
   await page.addInitScript(() => { localStorage.setItem("room.api-origin", "https://example.com"); window.nativeOffline = true; });
   await page.goto("/");
   await expect(page.getByText("API refresh failed · retrying", { exact: true })).toBeVisible();
-  await expect(page.getByRole("article")).toHaveCount(0);
+  await expect(page.getByRole("article")).toHaveCount(68);
   await page.evaluate(() => {
     window.nativeListeners.appStateChange({ isActive: false });
     window.nativeOffline = false;
     window.nativeListeners.appStateChange({ isActive: true });
   });
   await expect(page.getByRole("article").filter({ hasText: "Android Room" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Try sample preview", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try sample preview", exact: true })).toHaveCount(0);
   await page.evaluate(() => { window.scrollTo(0, 0); window.nativeListeners.backButton({}); });
   await expect.poll(() => page.evaluate(() => window.nativeMinimized)).toBe(true);
 });
