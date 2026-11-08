@@ -1,0 +1,27 @@
+/.vs_code/
+
+/.env
+
+.DS_Store
+
+
+# Local credentials and generated files
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+.vercel/
+.vite/
+playwright-report/
+test-results/
+__pycache__/
+*.pyc
+
+# Local Android toolchain, build outputs and signing material
+.tools/
+.cache/
+artifacts/
+*.jks
+*.keystore
+keystore.properties

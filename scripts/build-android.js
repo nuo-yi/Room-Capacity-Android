@@ -1,0 +1,21 @@
+import { existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const root = fileURLToPath(new URL("../", import.meta.url));
+const localJava = path.join(root, ".tools/jdk");
+const localSdk = path.join(root, ".tools/android-sdk");
+const env = { ...process.env };
+mkdirSync(path.join(root, ".cache/android"), { recursive: true });
+if (!env.JAVA_HOME && existsSync(localJava)) env.JAVA_HOME = localJava;
+if (!env.ANDROID_HOME && existsSync(localSdk)) env.ANDROID_HOME = localSdk;
+env.GRADLE_USER_HOME ||= path.join(root, ".cache/gradle");
+env.ANDROID_USER_HOME ||= path.join(root, ".cache/android");
+if (env.JAVA_HOME) env.PATH = path.join(env.JAVA_HOME, "bin") + path.delimiter + env.PATH;
+const result = spawnSync(process.platform === "win32" ? "gradlew.bat" : "./gradlew", ["assembleDebug", "--no-daemon", "--console=plain"], { cwd: path.join(root, "android"), env, stdio: "inherit" });
+if (result.error) console.error(result.error.message);
+if (result.status !== 0) process.exit(result.status || 1);
+mkdirSync(path.join(root, "artifacts"), { recursive: true });
+copyFileSync(path.join(root, "android/app/build/outputs/apk/debug/app-debug.apk"), path.join(root, "artifacts/room-capacity-debug.apk"));
+console.log("APK: artifacts/room-capacity-debug.apk");

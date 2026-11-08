@@ -1,0 +1,10 @@
+{
+  "appId": "io.github.grantyu9.roomcapacity",
+  "appName": "room.",
+  "webDir": "dist",
+  "backgroundColor": "#f8f9f4",
+  "android": { "allowMixedContent": false },
+  "plugins": {
+    "SystemBars": { "insetsHandling": "native", "style": "LIGHT" }
+  }
+}
